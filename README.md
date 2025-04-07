@@ -19,4 +19,5 @@ run.py:运行
 2.运行crawler.py文件
 3.运行embedding_processor.py文件
 4.运行run.py文件
-
+模型：
+这里没有放模型，可以从Huggingface官网、魔搭社区下载
