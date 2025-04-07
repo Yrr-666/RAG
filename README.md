@@ -20,4 +20,4 @@ run.py:运行
 3.运行embedding_processor.py文件
 4.运行run.py文件
 模型：
-这里没有放模型，可以从Huggingface官网、魔搭社区下载
+这里没有放模型，可以从Huggingface官网（https://huggingface.co/）、魔搭社区（https://www.modelscope.cn/home）下载
