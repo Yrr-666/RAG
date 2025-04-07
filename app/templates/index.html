@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中北大学新闻问答系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .chat-container {
+            max-width: 800px;
+            margin: 20px auto;
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .intro {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        .chat-history {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+        }
+        .chat-message {
+            margin: 10px 0;
+        }
+        .user-message {
+            text-align: right;
+            color: #007bff;
+        }
+        .bot-message {
+            text-align: left;
+            color: #333;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        .input-container textarea {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            resize: none;
+        }
+        .input-container button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .input-container button:hover {
+            background-color: #0056b3;
+        }
+        .loading {
+            color: #666;
+            margin-left: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h1>中北大学新闻问答系统</h1>
+        <p class="intro">欢迎使用！您可以询问中北大学近期新闻，例如“关于校党委的新闻有哪些？”</p>
+        <div class="chat-history" id="chat-history">
+            {% for entry in history %}
+                <div class="chat-message user-message">
+                    <strong>我</strong>: {{ entry.question }}
+                </div>
+                <div class="chat-message bot-message">
+                    <strong>AI</strong>:
+                    {% if entry.answer is iterable and not entry.answer is string %}
+                        <ul>
+                        {% for item in entry.answer %}
+                            <li>{{ item.content }} <a href="{{ item.link }}" target="_blank">查看详情</a></li>
+                        {% endfor %}
+                        </ul>
+                    {% else %}
+                        {% if entry.answer.find('(来源: ') != -1 %}
+                            {% set parts = entry.answer.split('(来源: ') %}
+                            {{ parts[0] | safe }} <a href="{{ parts[1][:-1] }}" target="_blank">查看详情</a>
+                        {% else %}
+                            {{ entry.answer }}
+                        {% endif %}
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+        <div class="input-container">
+            <textarea id="question-input" placeholder="请输入您的问题，例如：关于校党委的新闻有哪些？" rows="4"></textarea>
+            <button onclick="sendQuestion()">发送</button>
+            <span id="loading" class="loading">正在处理...</span>
+        </div>
+    </div>
+
+    <script>
+        // 获取 DOM 元素
+        const chatHistory = document.getElementById('chat-history');
+        const questionInput = document.getElementById('question-input');
+        const loading = document.getElementById('loading');
+        const sendButton = document.querySelector('.input-container button');
+
+        // 获取会话 ID（从后端传递）
+        const sessionId = "{{ session['session_id'] }}";
+
+        // 发送问题到后端
+        async function sendQuestion() {
+            const question = questionInput.value.trim();
+            if (!question) {
+                alert('请输入您的问题！');
+                return;
+            }
+
+            // 显示加载提示并禁用按钮
+            sendButton.disabled = true;
+            loading.style.display = 'inline';
+
+            // 显示用户的问题
+            appendMessage('user', question);
+            questionInput.value = ''; // 清空输入框
+
+            try {
+                // 发送 AJAX 请求到后端
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        question: question,
+                        session_id: sessionId,
+                    }),
+                });
+
+                const data = await response.json();
+                if (data.error) {
+                    appendMessage('bot', '错误：' + data.error);
+                    return;
+                }
+                // 显示模型的回答
+                appendMessage('bot', formatAnswer(data.answer));
+            } catch (error) {
+                appendMessage('bot', '抱歉，发生了错误，请稍后再试。');
+                console.error(error);
+            } finally {
+                // 隐藏加载提示并启用按钮
+                sendButton.disabled = false;
+                loading.style.display = 'none';
+            }
+        }
+
+        // 格式化回答（处理列表或带链接的回答）
+        function formatAnswer(answer) {
+            if (Array.isArray(answer)) {
+                let html = '<ul>';
+                for (let item of answer) {
+                    html += `<li>${item.content} <a href="${item.link}" target="_blank">查看详情</a></li>`;
+                }
+                html += '</ul>';
+                return html;
+            } else if (answer.includes('(来源: ')) {
+                const parts = answer.split('(来源: ');
+                return `${parts[0]} <a href="${parts[1].slice(0, -1)}" target="_blank">查看详情</a>`;
+            }
+            return answer;
+        }
+
+        // 添加消息到聊天记录
+        function appendMessage(sender, message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${sender}-message`;
+            messageDiv.innerHTML = `<strong>${sender === 'user' ? '我' : 'AI'}</strong>: ${message}`;
+            chatHistory.appendChild(messageDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight; // 自动滚动到底部
+        }
+
+        // 监听回车键发送
+        questionInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); // 防止换行
+                sendQuestion();
+            }
+        });
+    </script>
+</body>
+</html>
